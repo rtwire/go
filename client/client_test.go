@@ -37,7 +37,7 @@ func TestAccount(t *testing.T) {
 		t.Fatal("incorrect account id")
 	}
 
-	accs, err := client.Accounts()
+	_, accs, err := client.Accounts()
 	if err != nil {
 		t.Fatal(err)
 	}

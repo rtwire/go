@@ -14,22 +14,44 @@ import (
 )
 
 const (
-	MainNetURL  = "https://api.rtwire.com/v1/mainnet"
+	// MainNetURL is the URL that should be supplied to New() in order to
+	// connect to RTWire's mainnet network.
+	MainNetURL = "https://api.rtwire.com/v1/mainnet"
+
+	// TestNet3URL is the URL that should be supplied to New() in order to
+	// connect to RTWire's testnet3 network.
 	TestNet3URL = "https://api/rtwire.com/v1/testnet3"
 )
 
 var (
-	ErrTxIDUsed          = errors.New("TxID used")
+	// ErrTxIDUsed is returned from Transfer or Debit if the transaction ID has
+	// already been used.
+	ErrTxIDUsed = errors.New("TxID used")
+
+	// ErrInsufficientFunds is returned from Transfer or Debit if the account
+	// sending the funds has insufficient satoshi.
 	ErrInsufficientFunds = errors.New("insufficient funds")
-	ErrHookExists        = errors.New("hook exists")
+
+	// ErrHookExists is returned if a web hook has already been registered.
+	ErrHookExists = errors.New("hook exists")
 )
 
+// TransactionType is used to determine what type of transaction is returned
+// from the Transactions and AccountTransactions endpoints.
 type TransactionType string
 
 const (
+	// Transfer represents a transaction that has occured between two RTWire
+	// accounts.
 	Transfer TransactionType = "transfer"
-	Debit    TransactionType = "debit"
-	Credit   TransactionType = "credit"
+
+	// Debit represents a transaction that has occured between an RTWire
+	// account and a payment address on the bitcoin newtork.
+	Debit TransactionType = "debit"
+
+	// Credit represents a transaction that has occured when an RTWire account
+	// has been credited from the bitcoin network.
+	Credit TransactionType = "credit"
 )
 
 type option func(url *url.URL) error
@@ -44,28 +66,37 @@ func setQueryValue(u *url.URL, key, value string) error {
 	return nil
 }
 
+// Limit limits the maximum number of results returned from both the
+// AccountTransactions and Account endpoints.
 func Limit(limit int) option {
 	return func(u *url.URL) error {
 		return setQueryValue(u, "limit", strconv.Itoa(limit))
 	}
 }
 
+// Next takes the cursor value of a previous call to AccountTransactions, or
+// Accounts in order to page through the next set of results.
 func Next(next string) option {
 	return func(u *url.URL) error {
 		return setQueryValue(u, "next", next)
 	}
 }
 
+// Pending is an option used with AccountTransactions to return only the
+// transactions that have been detected by RTWire but have not yet been credited
+// to an account.
 func Pending() option {
 	return func(u *url.URL) error {
 		return setQueryValue(u, "status", "pending")
 	}
 }
 
+// Client allows Go applications to connect to the RTWire HTTP endpoints. See
+// https://rtwire.com/docs for more information.
 type Client interface {
 	CreateAccount() (Account, error)
 	Account(accountID int64) (Account, error)
-	Accounts(options ...option) ([]Account, error)
+	Accounts(options ...option) (string, []Account, error)
 
 	CreateAddress(accountID int64) (string, error)
 
@@ -90,11 +121,15 @@ type client struct {
 	pass   string
 }
 
+// Account represents an RTWire account. See https://rtwire.com/docs#accounts
+// for more information.
 type Account struct {
 	ID      int64 `json:"id"`
 	Balance int64 `json:"balance"`
 }
 
+// Transaction represents a RTWire transaction. See
+// https://rtwire.com/docs#transactions for more information.
 type Transaction struct {
 	ID   int64
 	Type TransactionType
@@ -115,6 +150,8 @@ type Transaction struct {
 	TxOutIndex int64    `json:"txOutIndex"`
 }
 
+// Hook represents an RTWire hook. See https://rtwire.com/docs#hooks for more
+// information.
 type Hook struct {
 	URL string `json:"url"`
 }
@@ -187,6 +224,8 @@ func accountFromPayload(payload json.RawMessage) (Account, error) {
 	return accs[0], nil
 }
 
+// CreateAccount creates a new account. See
+// https://rtwire.com/docs#post-accounts for more information.
 func (c *client) CreateAccount() (Account, error) {
 	urlStr := fmt.Sprintf("%s/accounts/", c.url)
 	req, err := http.NewRequest("POST", urlStr, nil)
@@ -202,6 +241,8 @@ func (c *client) CreateAccount() (Account, error) {
 	return accountFromPayload(payload)
 }
 
+// Account returns the account specified by id. See
+// https://rtwire.com/docs#get-account for more information.
 func (c *client) Account(id int64) (Account, error) {
 	urlStr := fmt.Sprintf("%s/accounts/%d", c.url, id)
 	req, err := http.NewRequest("GET", urlStr, nil)
@@ -218,34 +259,46 @@ func (c *client) Account(id int64) (Account, error) {
 	return accountFromPayload(payload)
 }
 
-func (c *client) Accounts(options ...option) ([]Account, error) {
+// Accounts returns a cursor for the next set of accouts, a list of accounts and// any errors which may have occured. Next() can be used to cursor through the
+// next set of accounts by passing in the previous cursor value. Limit() can be
+// used to limit the number of accounts that are returned in one call. See
+// https://rtwire.com/docs#get-accounts for more information.
+func (c *client) Accounts(options ...option) (string, []Account, error) {
 
 	urlStr := fmt.Sprintf("%s/accounts/", c.url)
 	url, err := url.Parse(urlStr)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 
 	for _, op := range options {
 		if err := op(url); err != nil {
-			return nil, err
+			return "", nil, err
 		}
 	}
 
 	req, err := http.NewRequest("GET", url.String(), nil)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	req.SetBasicAuth(c.user, c.pass)
 	req.Header.Set("Accept", "application/json")
-	_, payload, err := c.do(req)
+	next, payload, err := c.do(req)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 
-	return accountsFromPayload(payload)
+	accs, err := accountsFromPayload(payload)
+	if err != nil {
+		return "", nil, err
+	}
+	return next, accs, err
 }
 
+// CreateAddress creates a public key hash address associated with accountID.
+// Any bitcoins transfered to that address will credit the account associated
+// with accountID. See https://rtwire.com/docs#post-addresses for more
+// information.
 func (c *client) CreateAddress(accountID int64) (string, error) {
 	urlStr := fmt.Sprintf("%s/accounts/%d/addresses/", c.url, accountID)
 	req, err := http.NewRequest("POST", urlStr, nil)
@@ -269,6 +322,14 @@ func (c *client) CreateAddress(accountID int64) (string, error) {
 	return addrs[0].Address, nil
 }
 
+// AccountTransactions list all the transactions involving accountID. As there
+// may be many transactions a paging system is used. The first returned value
+// is a cursor for the next set of results. Next() with the previous cursor can
+// be used as an option to retrieve the next set of results. Limit() can be used
+// to determine how many transactions are returned with one call. The Pending()
+// option can be used to list all pending transactions for the specified
+// account. See https://rtwire.com/docs#get-account-transactions for more
+// information.
 func (c *client) AccountTransactions(accountID int64, options ...option) (
 	string, []Transaction, error) {
 	urlStr := fmt.Sprintf("%s/accounts/%d/transactions/", c.url, accountID)
@@ -300,6 +361,12 @@ func (c *client) AccountTransactions(accountID int64, options ...option) (
 	return next, txns, nil
 }
 
+// CreateTransactionIDs creates transaction ids that can be used to transfer
+// and debit satoshi from RTWire accounts. A transaction ID can only be used
+// successfully once. Allowing clients to create transaction IDs prior to
+// creating transactions through debits and transfers ensures that transactions
+// can be made idempotent. See https://rtwire.com/docs#put-transactions for more
+// information.
 func (c *client) CreateTransactionIDs(n int) ([]int64, error) {
 	urlStr := fmt.Sprintf("%s/transactions/", c.url)
 
@@ -337,6 +404,8 @@ func (c *client) CreateTransactionIDs(n int) ([]int64, error) {
 	return txIDs, nil
 }
 
+// Transaction returns transaction information for transaction id. See
+// https://rtwire.com/docs#get-transaction for more information.
 func (c *client) Transaction(id int64) (Transaction, error) {
 	urlStr := fmt.Sprintf("%s/transactions/%d", c.url, id)
 	req, err := http.NewRequest("GET", urlStr, nil)
@@ -358,6 +427,9 @@ func (c *client) Transaction(id int64) (Transaction, error) {
 	return txns[0], nil
 }
 
+// Transfer transfers value satoshi from fromAccountID to toAccountID. A
+// transaction ID, txID can be obtained from CreateTransactionIDs. See
+// https://rtwire.com/docs#put-transactions for more information.
 func (c *client) Transfer(txID, fromAccountID, toAccountID, value int64) error {
 
 	urlStr := fmt.Sprintf("%s/transactions/", c.url)
@@ -397,6 +469,9 @@ func (c *client) Transfer(txID, fromAccountID, toAccountID, value int64) error {
 	return nil
 }
 
+// Debit debits value satoshi from fromAccountID to a public key hash address
+// toAddress. A transaction ID, txID, can be obtained from CreateTransactionIDs.
+// See https://rtwire.com/docs#put-transactions for more information.
 func (c *client) Debit(txID, fromAccountID int64, toAddress string,
 	value int64) error {
 
@@ -430,6 +505,10 @@ func (c *client) Debit(txID, fromAccountID int64, toAddress string,
 	return nil
 }
 
+// CreateHook creates a web hook. Every time a transaction is potentially
+// credited to an account url will be called. Note that url may be called
+// several times for the same transaction. See
+// https://rtwire.com/docs#post-hooks for more information.
 func (c *client) CreateHook(url string) error {
 
 	urlStr := fmt.Sprintf("%s/hooks/", c.url)
@@ -460,6 +539,8 @@ func (c *client) CreateHook(url string) error {
 	return nil
 }
 
+// Hooks lists the registered web hooks. See https://rtwire.com/docs#get-hooks
+// for more information.
 func (c *client) Hooks() ([]Hook, error) {
 	urlStr := fmt.Sprintf("%s/hooks/", c.url)
 	req, err := http.NewRequest("GET", urlStr, nil)
@@ -476,6 +557,8 @@ func (c *client) Hooks() ([]Hook, error) {
 	return hooks, json.Unmarshal(payload, &hooks)
 }
 
+// DeleteHook deletes a web hook with the specified url. See
+// https://rtwire.com/docs#delete-hook for more information.
 func (c *client) DeleteHook(url string) error {
 	encodedURL := base64.URLEncoding.EncodeToString([]byte(url))
 	urlStr := fmt.Sprintf("%s/hooks/%s", c.url, encodedURL)
@@ -490,6 +573,9 @@ func (c *client) DeleteHook(url string) error {
 	return nil
 }
 
+// New creates a new client. URL can either be MainNetURL or TestNet3URL to
+// connect to their respective RTWire endpoints. User and pass represent
+// credentials that can be found at https://console.rtwire.com/.
 func New(c *http.Client, url, user, pass string) Client {
 	return &client{
 		client: c,
@@ -499,11 +585,18 @@ func New(c *http.Client, url, user, pass string) Client {
 	}
 }
 
+// TransactionEvent represents a RTWire transaction event generated by a
+// registered hook. The transaction status can either be blank or 'pending'. If
+// it is pending then RTWire has registered the transaction but is not confident
+// enough in it to release it to the account.
 type TransactionEvent struct {
 	Transaction
 	Status string `json:"status"`
 }
 
+// Unmarshal takes an http.Request that has been generated by an RTWire hook
+// event and returns a TransactionEvent. See https://rtwire.com/docs#hook-event
+// for more information.
 func Unmarshal(r *http.Request) ([]TransactionEvent, error) {
 
 	if r.Header.Get("Content-Type") != "application/json" {
