@@ -281,7 +281,7 @@ func TestHooks(t *testing.T) {
 		t.Fatal("tx ID not set")
 	}
 
-	if msg.events[0].Type != client.Credit {
+	if msg.events[0].Type != "credit" {
 		t.Fatal("expected credit tx type")
 	}
 
