@@ -41,11 +41,13 @@ func TestAccount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(accs) != 1 {
-		t.Fatal("expected one account", len(accs))
+
+	// Two accounts because the system always initializes with a fees account.
+	if len(accs) != 2 {
+		t.Fatal("expected two account", len(accs))
 	}
 
-	if accs[0].ID != accOne.ID {
+	if accs[0].ID != accOne.ID && accs[1].ID != accOne.ID {
 		t.Fatal("incorrect account ID")
 	}
 }
