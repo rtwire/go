@@ -106,8 +106,9 @@ type Client interface {
 		string, []Transaction, error)
 
 	Transfer(txID, fromAccountID, toAccountID, value int64) error
-
 	Debit(txID, fromAccountID int64, toAddress string, value int64) error
+
+	Fees() ([]Fee, error)
 
 	CreateHook(url string) error
 	Hooks() ([]Hook, error)
@@ -148,6 +149,11 @@ type Transaction struct {
 
 	TxHashes   []string `json:"txHashes"`
 	TxOutIndex int64    `json:"txOutIndex"`
+}
+
+type Fee struct {
+	FeePerByte  int64 `json:"feePerByte"`
+	BlockHeight int64 `json:"blockHeight"`
 }
 
 // Hook represents an RTWire hook. See https://rtwire.com/docs#hooks for more
@@ -503,6 +509,25 @@ func (c *client) Debit(txID, fromAccountID int64, toAddress string,
 		return err
 	}
 	return nil
+}
+
+// Fees returns the current estimated miner fees. This gives an idea of how much
+// a debit will cost in miner fees.See https://rtwire.com/docs#get-fees for more
+// information.
+func (c *client) Fees() ([]Fee, error) {
+	req, err := http.NewRequest("GET", c.url+"/fees/", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.SetBasicAuth(c.user, c.pass)
+	req.Header.Set("Accept", "application/json")
+	_, payload, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	fees := []Fee{}
+	return fees, json.Unmarshal(payload, &fees)
 }
 
 // CreateHook creates a web hook. Every time a transaction is potentially

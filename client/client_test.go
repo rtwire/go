@@ -358,3 +358,26 @@ func TestDebit(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestFees(t *testing.T) {
+
+	server := httptest.NewServer(service.New())
+	defer server.Close()
+
+	url := fmt.Sprintf("%s/v1/mainnet", server.URL)
+	cl := client.New(http.DefaultClient, url, "user", "pass")
+
+	fees, err := cl.Fees()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(fees) != 1 {
+		t.Fatal("incorrect fees length")
+	}
+
+	if fees[0].FeePerByte == 0 {
+		t.Fatal("fees per byte not set")
+	}
+
+}
