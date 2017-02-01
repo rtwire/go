@@ -36,24 +36,6 @@ var (
 	ErrHookExists = errors.New("hook exists")
 )
 
-// TransactionType is used to determine what type of transaction is returned
-// from the Transactions and AccountTransactions endpoints.
-type TransactionType string
-
-const (
-	// Transfer represents a transaction that has occured between two RTWire
-	// accounts.
-	Transfer TransactionType = "transfer"
-
-	// Debit represents a transaction that has occured between an RTWire
-	// account and a payment address on the bitcoin newtork.
-	Debit TransactionType = "debit"
-
-	// Credit represents a transaction that has occured when an RTWire account
-	// has been credited from the bitcoin network.
-	Credit TransactionType = "credit"
-)
-
 type option func(url *url.URL) error
 
 func setQueryValue(u *url.URL, key, value string) error {
@@ -132,8 +114,9 @@ type Account struct {
 // Transaction represents a RTWire transaction. See
 // https://rtwire.com/docs#transactions for more information.
 type Transaction struct {
-	ID   int64
-	Type TransactionType
+	ID int64 `json:"id"`
+
+	Type string `json:"type"`
 
 	FromAccountID int64 `json:"fromAccountID"`
 	ToAccountID   int64 `json:"toAccountID"`
@@ -144,8 +127,8 @@ type Transaction struct {
 	FromAccountTxID int64 `json:"fromAccountTxID"`
 	ToAccountTxID   int64 `json:"toAccountTxID"`
 
-	Value   int64
-	Created time.Time
+	Value   int64     `json:"value"`
+	Created time.Time `json:"created"`
 
 	TxHashes   []string `json:"txHashes"`
 	TxOutIndex int64    `json:"txOutIndex"`
