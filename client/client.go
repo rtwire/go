@@ -227,7 +227,7 @@ func (c *client) do(req *http.Request) (string, json.RawMessage, error) {
 		return "", nil, fmt.Errorf("%v: %s", req.URL, body)
 	}
 
-	if obj.Type == "error" {
+	if obj.Type == "errors" {
 		return "", nil, doError(obj)
 	}
 	return obj.Next, obj.Payload, nil

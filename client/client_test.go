@@ -383,3 +383,33 @@ func TestFees(t *testing.T) {
 	}
 
 }
+
+func TestBadRequestError(t *testing.T) {
+
+	server := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			if _, err := w.Write([]byte(`{
+			"type": "errors",
+			"payload": [{
+				"message": "test error"
+			}]
+		}`)); err != nil {
+				t.Fatal(err)
+			}
+		}))
+	defer server.Close()
+
+	url := fmt.Sprintf("%s/v1/mainnet", server.URL)
+	cl := client.New(http.DefaultClient, url, "user", "pass")
+
+	_, _, err := cl.Accounts()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	if err.Error() != "test error" {
+		t.Fatalf("unexpected error %v", err.Error())
+	}
+}
