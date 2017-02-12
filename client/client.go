@@ -20,7 +20,7 @@ const (
 
 	// TestNet3URL is the URL that should be supplied to New() in order to
 	// connect to RTWire's testnet3 network.
-	TestNet3URL = "https://api/rtwire.com/v1/testnet3"
+	TestNet3URL = "https://api.rtwire.com/v1/testnet3"
 )
 
 var (
